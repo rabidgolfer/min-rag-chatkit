@@ -127,10 +127,3 @@ This project comes with the following agents:
    These three agents are collaboratively managed through a supervisor.
 
    For details, please refer to: `backend/app/ai/agent/multi_agent.py`
-
-
-
-
-
-
-

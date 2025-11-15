@@ -18,8 +18,22 @@ import json
 
 logger = logging.getLogger(__name__)
 
+chat_router = APIRouter(prefix="/chat", tags=["chat"])
 
-chat_router = APIRouter(prefix="/chat", tags=["chat"],)
+
+def _sse_response_example() -> dict[int, Any]:
+    return {
+        status.HTTP_200_OK: {
+            "description": "Server Sent Event Response",
+            "content": {
+                "text/event-stream": {
+                    "example": "data: {'type': 'token', 'content': 'Hello'}\n\ndata: {'type': 'token', 'content': ' World'}\n\ndata: end\n\n",
+                    "schema": {"type": "string"},
+                }
+            },
+        }
+    }
+
 
 @chat_router.post("/invoke")
 async def invoke(user_input: UserInput) -> ChatMessage:
@@ -30,7 +44,7 @@ async def invoke(user_input: UserInput) -> ChatMessage:
     Use thread_id to persist and continue multi-turn dialogues. The run_id keyword argument will also be attached to the message for recording feedback.
     """
     agent: CompiledStateGraph = get_agent(user_input.agent_id)
-    
+
     kwargs, run_id = await _handle_input(user_input, agent)
     try:
         response_events = await agent.ainvoke(**kwargs, stream_mode=["updates", "values"])
@@ -52,15 +66,13 @@ async def invoke(user_input: UserInput) -> ChatMessage:
     except Exception as e:
         logger.error(f"An exception occurred: {e}")
         raise HTTPException(status_code=500, detail="Unexpected error")
-    
-    
+
+
 @chat_router.post("/stream", response_class=StreamingResponse, responses=_sse_response_example())
 async def stream(user_input: StreamInput) -> StreamingResponse:
     """
     流式传输代理的响应。
-    
     """
-
     return StreamingResponse(
         message_generator(user_input),
         media_type="text/event-stream",
@@ -116,19 +128,6 @@ async def _handle_input(
 
     return kwargs, run_id
 
-def _sse_response_example() -> dict[int, Any]:
-    return {
-        status.HTTP_200_OK: {
-            "description": "Server Sent Event Response",
-            "content": {
-                "text/event-stream": {
-                    "example": "data: {'type': 'token', 'content': 'Hello'}\n\ndata: {'type': 'token', 'content': ' World'}\n\ndata: end\n\n",
-                    "schema": {"type": "string"},
-                }
-            },
-        }
-    }
-
 
 async def message_generator(
     user_input: StreamInput
@@ -156,14 +155,14 @@ async def message_generator(
                             new_messages.append(AIMessage(content=interrupt.value))
                         continue
                     update_messages = updates.get("messages", [])
- 
-                     # Only retain the output of "supervisor"
+
+                    # Only retain the output of "supervisor"
                     if node == "supervisor":
                         if isinstance(update_messages[-1], AIMessage):
                             update_messages = [update_messages[-1]]
                         elif isinstance(update_messages[-1], ToolMessage):
                             if len(update_messages) > 1:
-                                update_messages = [update_messages[-2],update_messages[-1]]
+                                update_messages = [update_messages[-2], update_messages[-1]]
                             else:
                                 update_messages = [update_messages[-1]]
                         else:
@@ -212,5 +211,3 @@ async def message_generator(
         yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
     finally:
         yield f"data: {json.dumps({'type': 'end'})}\n\n"
-
-
